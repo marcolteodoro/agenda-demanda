@@ -18,6 +18,8 @@ let onlyOverdue = false;         // toggle "Atrasadas" (agora: mostra atrasadas 
 let editingId = null;            // id em edição
 let uiReady = false;             // garante que não duplica options
 let realtimeChannel = null;
+let showFuture = false; // 🔥 mostra tarefas com prazo >= selectedDate
+
 
 /* ========= Helpers de data ========= */
 function isoToday(){
@@ -230,8 +232,9 @@ function shiftWeek(deltaDays){
 }
 
 // clique no título da semana -> abre seletor de data (pular pra qualquer dia)
-(function makeWeekLabelJump(){
+(function makeWeekLabelJumpAndNav(){
   if (!weekLabel) return;
+
   const jump = document.createElement("input");
   jump.type = "date";
   jump.style.position = "fixed";
@@ -240,9 +243,26 @@ function shiftWeek(deltaDays){
   document.body.appendChild(jump);
 
   weekLabel.style.cursor = "pointer";
-  weekLabel.title = "Clique para escolher uma data";
+  weekLabel.title = "Clique no centro para escolher uma data • Esquerda = semana anterior • Direita = próxima semana";
 
-  weekLabel.addEventListener("click", () => {
+  weekLabel.addEventListener("click", (e) => {
+    const rect = weekLabel.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const third = rect.width / 3;
+
+    // 1/3 esquerdo: volta semana
+    if (x < third) {
+      shiftWeek(-7);
+      return;
+    }
+
+    // 1/3 direito: avança semana
+    if (x > third * 2) {
+      shiftWeek(7);
+      return;
+    }
+
+    // centro: escolhe data
     jump.value = selectedDate;
     if (jump.showPicker) jump.showPicker();
     else jump.click();
@@ -252,10 +272,17 @@ function shiftWeek(deltaDays){
     if (!jump.value) return;
     selectedDate = jump.value;
     onlyOverdue = false;
+    showFuture = false;
     btnOverdue.classList.remove("bottom__btn--active");
     renderWeek();
     render();
   });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") shiftWeek(-7);
+    if (e.key === "ArrowRight") shiftWeek(7);
+  });
+})();
 
   // atalhos: seta esquerda/direita troca semana
   document.addEventListener("keydown", (e) => {
@@ -263,6 +290,12 @@ function shiftWeek(deltaDays){
     if (e.key === "ArrowRight") shiftWeek(7);
   });
 })();
+
+// Atalho: tecla F liga/desliga FUTURAS
+document.addEventListener("keydown", (e) => {
+  if (e.key.toLowerCase() === "f") toggleFuture();
+});
+
 
 /* ========= Modal demanda ========= */
 function openModal(){
@@ -355,10 +388,18 @@ function getFiltered(){
   // - se tem busca: busca em TODAS as datas
   // - senão: mostra só o dia selecionado
   if (onlyOverdue) {
-    list = list.filter(isOverdue);
-  } else if (!hasSearch) {
-    list = list.filter(x => x.prazo === selectedDate);
-  }
+  // atrasadas de todas as datas
+  list = list.filter(isOverdue);
+
+} else if (showFuture) {
+  // 🔥 futuras a partir do dia selecionado
+  list = list.filter(x => x.prazo >= selectedDate);
+
+} else if (!hasSearch) {
+  // padrão: só o dia selecionado
+  list = list.filter(x => x.prazo === selectedDate);
+}
+
 
   // filtros
   if (t) list = list.filter(x => x.tipo === t);
@@ -597,6 +638,19 @@ btnLogin.onclick = async () => {
   renderWeek();
   render();
 };
+
+function toggleFuture(){
+  showFuture = !showFuture;
+
+  // se ligar Futuras, desliga Atrasadas (pra não confundir)
+  if (showFuture) {
+    onlyOverdue = false;
+    btnOverdue.classList.remove("bottom__btn--active");
+  }
+
+  render();
+}
+
 
 /* ========= Start ========= */
 async function init(){
