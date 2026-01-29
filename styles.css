@@ -177,19 +177,27 @@ body{
   background: rgba(242,242,247,.92);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--line);
-  display:grid;
-  grid-template-columns: repeat(4, 1fr);
+
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr)); /* ✅ agora são 5 botões */
   gap: 8px;
+
   padding: 10px 10px calc(10px + env(safe-area-inset-bottom)) 10px;
 }
+
 .bottom__btn{
-  padding: 12px 10px;
+  width: 100%;
+  padding: 12px 8px;
   border-radius: 14px;
-  border:1px solid var(--line);
+  border: 1px solid var(--line);
   background: var(--card);
-  font-weight:800;
-  cursor:pointer;
+  font-weight: 800;
+  cursor: pointer;
+
+  white-space: nowrap;   /* ✅ evita quebrar texto dentro do botão */
+  font-size: 14px;       /* ✅ cabe melhor */
 }
+
 .bottom__btn--active{
   border-color: var(--blue);
   color: var(--blue);
@@ -270,4 +278,32 @@ body{
   .topbar, .filters, .bottom, .week{ display:none !important; }
   body{ background:white; }
   .task{ box-shadow:none; }
+}
+/* iPhones / telas menores: quebra em 2 linhas (3 colunas) */
+@media (max-width: 520px){
+  .bottom{
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* como a barra pode ficar mais alta em 2 linhas,
+     damos mais espaço no conteúdo */
+  .main{
+    padding-bottom: 140px;
+  }
+
+  .bottom__btn{
+    font-size: 13px;
+    padding: 11px 6px;
+  }
+}
+
+/* bem pequeno: 2 colunas (fica confortável) */
+@media (max-width: 360px){
+  .bottom{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .main{
+    padding-bottom: 170px;
+  }
 }
