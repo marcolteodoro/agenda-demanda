@@ -1,4 +1,3 @@
-/* ================== SUPABASE ================== */
 const SUPABASE_URL = "https://swxcryxuqumhbvvbfhvk.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_JlSGIsbRrbFgyZb4ZnxNww_FomT7ukQ";
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -11,16 +10,14 @@ const TIPOS = [
 const STATUS = ["Não iniciada","Em progresso","Concluída","Com pendência"];
 const CLASSIF = ["Regular","Urgente","Importante","Prioridade"];
 
-/* ========= Estado do app ========= */
+/* ========= Estado ========= */
 let tasks = [];
-let selectedDate = isoToday();   // YYYY-MM-DD
-let onlyOverdue = false;         // toggle "Atrasadas" (agora: mostra atrasadas de TODAS as datas)
-let editingId = null;            // id em edição
-let uiReady = false;             // garante que não duplica options
+let selectedDate = isoToday();
+let showFuture = true;      // ✅ padrão: mostrar a partir do dia selecionado
+let showOverdueOnly = false;
+let editingId = null;
 let realtimeChannel = null;
-let showFuture = false; // 🔥 mostra tarefas com prazo >= selectedDate
-
-
+let isSaving = false;
 
 /* ========= Helpers de data ========= */
 function isoToday(){
@@ -28,21 +25,14 @@ function isoToday(){
   d.setHours(0,0,0,0);
   return d.toISOString().slice(0,10);
 }
-function toDate(iso){ // ISO -> Date (00:00)
+function toDate(iso){
   const [y,m,dd] = iso.split("-").map(Number);
   const d = new Date(y, m-1, dd);
   d.setHours(0,0,0,0);
   return d;
 }
-function formatBR(iso){
-  return toDate(iso).toLocaleDateString("pt-BR");
-}
-function startOfWeek(iso){ // segunda como início
-  const d = toDate(iso);
-  const day = d.getDay(); // 0 dom ... 6 sáb
-  const diff = (day === 0) ? -6 : (1 - day);
-  d.setDate(d.getDate() + diff);
-  return d;
+function iso(dateObj){
+  return dateObj.toISOString().slice(0,10);
 }
 function addDays(dateObj, n){
   const d = new Date(dateObj);
@@ -50,21 +40,108 @@ function addDays(dateObj, n){
   d.setHours(0,0,0,0);
   return d;
 }
-function iso(dateObj){
-  return dateObj.toISOString().slice(0,10);
+function formatBR(isoStr){
+  return toDate(isoStr).toLocaleDateString("pt-BR");
+}
+function startOfWeek(isoStr){
+  const d = toDate(isoStr);
+  const day = d.getDay(); // 0 dom ... 6 sáb
+  const diff = (day === 0) ? -6 : (1 - day); // segunda
+  d.setDate(d.getDate() + diff);
+  return d;
 }
 function isOverdue(t){
   if (t.status === "Concluída") return false;
   return toDate(t.prazo) < toDate(isoToday());
 }
 
-/* ================== CLOUD ================== */
+/* ========= DOM refs ========= */
+const weekLabel   = document.getElementById("weekLabel");
+const weekRow     = document.getElementById("weekRow");
+const tasksList   = document.getElementById("tasksList");
+const emptyState  = document.getElementById("emptyState");
+const overdueBadge= document.getElementById("overdueBadge");
+const listTitle   = document.getElementById("listTitle");
+
+const searchInput = document.getElementById("searchInput");
+const typeFilter  = document.getElementById("typeFilter");
+const statusFilter= document.getElementById("statusFilter");
+const classFilter = document.getElementById("classFilter");
+
+const btnNew     = document.getElementById("btnNew");
+const btnToday   = document.getElementById("btnToday");
+const btnFuture  = document.getElementById("btnFuture"); // ✅ importante: id tem que existir no HTML
+const btnOverdue = document.getElementById("btnOverdue");
+const btnExport  = document.getElementById("btnExport");
+
+const btnPrevWeek = document.getElementById("btnPrevWeek");
+const btnNextWeek = document.getElementById("btnNextWeek");
+
+const modal      = document.getElementById("modal");
+const modalTitle = document.getElementById("modalTitle");
+const btnClose   = document.getElementById("btnClose");
+const btnDelete  = document.getElementById("btnDelete");
+const taskForm   = document.getElementById("taskForm");
+
+const fCliente = document.getElementById("fCliente");
+const fCpf     = document.getElementById("fCpf");
+const fTipo    = document.getElementById("fTipo");
+const fTarefa  = document.getElementById("fTarefa");
+const fPrazo   = document.getElementById("fPrazo");
+const fStatus  = document.getElementById("fStatus");
+const fClass   = document.getElementById("fClass");
+const fObs     = document.getElementById("fObs");
+
+const authModal = document.getElementById("authModal");
+const aEmail    = document.getElementById("aEmail");
+const aPass     = document.getElementById("aPass");
+const btnLogin  = document.getElementById("btnLogin");
+
+/* ========= UI helpers ========= */
+function openModal(){ modal.hidden = false; }
+function closeModal(){ modal.hidden = true; editingId = null; }
+
+function openAuth(){ authModal.hidden = false; }
+function closeAuth(){ authModal.hidden = true; }
+
+function fillSelect(select, arr){
+  select.innerHTML = arr.map(v => `<option value="${v}">${v}</option>`).join("");
+}
+
+function setupSelectsOnce(){
+  // selects do formulário (modal)
+  fillSelect(fTipo, TIPOS);
+  fillSelect(fStatus, STATUS);
+  fillSelect(fClass, CLASSIF);
+
+  // filtros (limpa e recria, evita duplicar)
+  typeFilter.innerHTML   = `<option value="">Tipo: Todos</option>`;
+  statusFilter.innerHTML = `<option value="">Status: Todos</option>`;
+  classFilter.innerHTML  = `<option value="">Classificação: Todas</option>`;
+
+  TIPOS.forEach(v => typeFilter.insertAdjacentHTML("beforeend", `<option value="${v}">${v}</option>`));
+  STATUS.forEach(v => statusFilter.insertAdjacentHTML("beforeend", `<option value="${v}">${v}</option>`));
+  CLASSIF.forEach(v => classFilter.insertAdjacentHTML("beforeend", `<option value="${v}">${v}</option>`));
+}
+
+function setBottomActive(){
+  btnFuture?.classList.toggle("bottom__btn--active", showFuture && !showOverdueOnly);
+  btnOverdue?.classList.toggle("bottom__btn--active", showOverdueOnly);
+}
+
+/* ========= Supabase (cloud) ========= */
 async function getUser(){
   const { data: { user } } = await db.auth.getUser();
   return user || null;
 }
 
-async function loadFromCloud() {
+function dedupeById(list){
+  const m = new Map();
+  for (const t of list) m.set(t.id, t);
+  return Array.from(m.values());
+}
+
+async function loadFromCloud(){
   const user = await getUser();
   if (!user) return [];
 
@@ -78,27 +155,24 @@ async function loadFromCloud() {
     return [];
   }
 
-  // dedup por ID (proteção extra)
-  const map = new Map();
-  for (const r of (data || [])) {
-    map.set(r.id, {
-      id: r.id,
-      cliente: r.cliente,
-      cpf: r.cpf,
-      tipo: r.tipo,
-      tarefa: r.tarefa,
-      prazo: r.prazo,
-      status: r.status,
-      classificacao: r.classificacao,
-      observacoes: r.observacoes || "",
-      createdAt: r.created_at,
-      updatedAt: r.updated_at
-    });
-  }
-  return Array.from(map.values());
+  const mapped = (data || []).map(r => ({
+    id: r.id,
+    cliente: r.cliente,
+    cpf: r.cpf,
+    tipo: r.tipo,
+    tarefa: r.tarefa,
+    prazo: r.prazo,
+    status: r.status,
+    classificacao: r.classificacao,
+    observacoes: r.observacoes || "",
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  }));
+
+  return dedupeById(mapped);
 }
 
-async function upsertToCloud(task) {
+async function upsertToCloud(task){
   const user = await getUser();
   if (!user) return;
 
@@ -115,15 +189,12 @@ async function upsertToCloud(task) {
     observacoes: task.observacoes || ""
   };
 
-  // ✅ evita “insert duplicado” quando seu banco não está com PK perfeita
-  const { error } = await db
-    .from("demandas")
-    .upsert(row, { onConflict: "id" });
-
-  if (error) alert("Erro ao salvar: " + error.message);
+  // ✅ onConflict garante upsert de verdade por id
+  const { error } = await db.from("demandas").upsert(row, { onConflict: "id" });
+  if (error) throw error;
 }
 
-async function deleteFromCloud(id) {
+async function deleteFromCloud(id){
   const user = await getUser();
   if (!user) return;
 
@@ -133,10 +204,10 @@ async function deleteFromCloud(id) {
     .eq("id", id)
     .eq("user_id", user.id);
 
-  if (error) alert("Erro ao excluir: " + error.message);
+  if (error) throw error;
 }
 
-async function startRealtime() {
+async function startRealtime(){
   const user = await getUser();
   if (!user) return;
 
@@ -146,16 +217,12 @@ async function startRealtime() {
   }
 
   realtimeChannel = db
-    .channel(`demandas-sync-${user.id}`)
+    .channel("demandas-sync")
     .on(
       "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "demandas",
-        filter: `user_id=eq.${user.id}`
-      },
+      { event: "*", schema: "public", table: "demandas", filter: `user_id=eq.${user.id}` },
       async () => {
+        // ✅ sempre “verdade” do banco
         tasks = await loadFromCloud();
         renderWeek();
         render();
@@ -164,187 +231,13 @@ async function startRealtime() {
     .subscribe();
 }
 
-/* ========= DOM refs ========= */
-const weekLabel = document.getElementById("weekLabel");
-const weekRow = document.getElementById("weekRow");
-const tasksList = document.getElementById("tasksList");
-const emptyState = document.getElementById("emptyState");
-const overdueBadge = document.getElementById("overdueBadge");
-
-const searchInput = document.getElementById("searchInput");
-const typeFilter = document.getElementById("typeFilter");
-const statusFilter = document.getElementById("statusFilter");
-const classFilter = document.getElementById("classFilter");
-
-const btnNew = document.getElementById("btnNew");
-const btnToday = document.getElementById("btnToday");
-const btnOverdue = document.getElementById("btnOverdue");
-const btnExport = document.getElementById("btnExport");
-const btnFuture = document.getElementById("btnFuture");
-
-
-const modal = document.getElementById("modal");
-const modalTitle = document.getElementById("modalTitle");
-const btnClose = document.getElementById("btnClose");
-const btnDelete = document.getElementById("btnDelete");
-const taskForm = document.getElementById("taskForm");
-
-const fCliente = document.getElementById("fCliente");
-const fCpf = document.getElementById("fCpf");
-const fTipo = document.getElementById("fTipo");
-const fTarefa = document.getElementById("fTarefa");
-const fPrazo = document.getElementById("fPrazo");
-const fStatus = document.getElementById("fStatus");
-const fClass = document.getElementById("fClass");
-const fObs = document.getElementById("fObs");
-
-const authModal = document.getElementById("authModal");
-const aEmail = document.getElementById("aEmail");
-const aPass = document.getElementById("aPass");
-const btnLogin = document.getElementById("btnLogin");
-
-/* ========= Auth modal ========= */
-function openAuth(){ authModal.hidden = false; }
-function closeAuth(){ authModal.hidden = true; }
-
-/* ========= UI init (options) ========= */
-function fillSelect(select, arr){
-  select.innerHTML = arr.map(v => `<option value="${v}">${v}</option>`).join("");
-}
-
-function setupOptionsOnce(){
-  if (uiReady) return;
-  uiReady = true;
-
-  // selects do formulário (sempre reseta)
-  fillSelect(fTipo, TIPOS);
-  fillSelect(fStatus, STATUS);
-  fillSelect(fClass, CLASSIF);
-
-  // filtros (sempre reseta e cria o "Todos" 1x)
-  typeFilter.innerHTML = `<option value="">Tipo: Todos</option>` + TIPOS.map(v => `<option value="${v}">${v}</option>`).join("");
-  statusFilter.innerHTML = `<option value="">Status: Todos</option>` + STATUS.map(v => `<option value="${v}">${v}</option>`).join("");
-  classFilter.innerHTML = `<option value="">Classificação: Todas</option>` + CLASSIF.map(v => `<option value="${v}">${v}</option>`).join("");
-}
-
-/* ========= Semana: navegar para data futura ========= */
+/* ========= Semana ========= */
 function shiftWeek(deltaDays){
   selectedDate = iso(addDays(toDate(selectedDate), deltaDays));
   renderWeek();
   render();
 }
 
-// clique no título da semana -> abre seletor de data (pular pra qualquer dia)
-(function makeWeekLabelJumpAndNav(){
-  if (!weekLabel) return;
-
-  const jump = document.createElement("input");
-  jump.type = "date";
-  jump.style.position = "fixed";
-  jump.style.left = "-9999px";
-  jump.style.top = "-9999px";
-  document.body.appendChild(jump);
-
-  weekLabel.style.cursor = "pointer";
-  weekLabel.title = "Clique no centro para escolher uma data • Esquerda = semana anterior • Direita = próxima semana";
-
-  weekLabel.addEventListener("click", (e) => {
-    const rect = weekLabel.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const third = rect.width / 3;
-
-    // 1/3 esquerdo: volta semana
-    if (x < third) {
-      shiftWeek(-7);
-      return;
-    }
-
-    // 1/3 direito: avança semana
-    if (x > third * 2) {
-      shiftWeek(7);
-      return;
-    }
-
-    // centro: escolhe data
-    jump.value = selectedDate;
-    if (jump.showPicker) jump.showPicker();
-    else jump.click();
-  });
-
-  jump.addEventListener("change", () => {
-    if (!jump.value) return;
-    selectedDate = jump.value;
-    onlyOverdue = false;
-    showFuture = false;
-    btnOverdue.classList.remove("bottom__btn--active");
-    renderWeek();
-    render();
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowLeft") shiftWeek(-7);
-    if (e.key === "ArrowRight") shiftWeek(7);
-  });
-})();
-
-  // atalhos: seta esquerda/direita troca semana
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowLeft") shiftWeek(-7);
-    if (e.key === "ArrowRight") shiftWeek(7);
-});
-
-// Atalho: tecla F liga/desliga FUTURAS
-document.addEventListener("keydown", (e) => {
-  if (e.key.toLowerCase() === "f") toggleFuture();
-});
-
-
-/* ========= Modal demanda ========= */
-function openModal(){
-  modal.hidden = false;
-}
-function closeModal(){
-  modal.hidden = true;
-  editingId = null;
-}
-function clearForm(){
-  fCliente.value = "";
-  fCpf.value = "";
-  fTipo.value = TIPOS[0];
-  fTarefa.value = "";
-  fPrazo.value = selectedDate;
-  fStatus.value = STATUS[0];
-  fClass.value = CLASSIF[0];
-  fObs.value = "";
-}
-function openNew(){
-  editingId = null;
-  modalTitle.textContent = "Nova demanda";
-  btnDelete.hidden = true;
-  clearForm();
-  openModal();
-}
-function openEdit(id){
-  const t = tasks.find(x => x.id === id);
-  if (!t) return;
-
-  editingId = id;
-  modalTitle.textContent = "Editar demanda";
-  btnDelete.hidden = false;
-
-  fCliente.value = t.cliente;
-  fCpf.value = t.cpf;
-  fTipo.value = t.tipo;
-  fTarefa.value = t.tarefa;
-  fPrazo.value = t.prazo;
-  fStatus.value = t.status;
-  fClass.value = t.classificacao;
-  fObs.value = t.observacoes || "";
-
-  openModal();
-}
-
-/* ========= Render Semana ========= */
 function renderWeek(){
   const start = startOfWeek(selectedDate);
   const end = addDays(start, 6);
@@ -354,7 +247,7 @@ function renderWeek(){
     ` | Início: ${start.toLocaleDateString("pt-BR")}`;
 
   weekRow.innerHTML = "";
-  for(let i=0;i<7;i++){
+  for (let i=0;i<7;i++){
     const d = addDays(start, i);
     const dIso = iso(d);
     const dow = d.toLocaleDateString("pt-BR", { weekday:"short" }).replace(".", "").toUpperCase();
@@ -374,66 +267,65 @@ function renderWeek(){
   }
 }
 
-/* ========= Filtragem ========= */
+/* ========= Filtro/Render ========= */
 function getFiltered(){
-  const q = (searchInput.value || "").trim().toLowerCase();
+  let list = tasks.slice();
+
+  // modo atrasadas: ignora data e mostra tudo que está atrasado
+  if (showOverdueOnly) {
+    list = list.filter(isOverdue);
+  } else {
+    // ✅ padrão: mostrar a partir do dia selecionado
+    if (showFuture) list = list.filter(x => x.prazo >= selectedDate);
+    else list = list.filter(x => x.prazo === selectedDate);
+  }
+
+  // filtros de dropdown
   const t = typeFilter.value;
   const s = statusFilter.value;
   const c = classFilter.value;
-
-  let list = tasks.slice();
-
-  const hasSearch = q.length > 0;
-
-  // ✅ comportamento novo:
-  // - se Atrasadas ligado: mostra atrasadas de TODAS as datas
-  // - se tem busca: busca em TODAS as datas
-  // - senão: mostra só o dia selecionado
-  if (onlyOverdue) {
-  // atrasadas de todas as datas
-  list = list.filter(isOverdue);
-
-} else if (showFuture) {
-  // 🔥 futuras a partir do dia selecionado
-  list = list.filter(x => x.prazo >= selectedDate);
-
-} else if (!hasSearch) {
-  // padrão: só o dia selecionado
-  list = list.filter(x => x.prazo === selectedDate);
-}
-
-
-  // filtros
   if (t) list = list.filter(x => x.tipo === t);
   if (s) list = list.filter(x => x.status === s);
   if (c) list = list.filter(x => x.classificacao === c);
 
   // busca
-  if (hasSearch){
+  const q = (searchInput.value || "").trim().toLowerCase();
+  if (q){
     list = list.filter(x =>
-      (x.cliente || "").toLowerCase().includes(q) ||
-      (x.tarefa || "").toLowerCase().includes(q) ||
-      (x.cpf || "").toLowerCase().includes(q)
+      x.cliente.toLowerCase().includes(q) ||
+      x.tarefa.toLowerCase().includes(q) ||
+      x.cpf.toLowerCase().includes(q)
     );
   }
 
   // ordenação
   const rank = { "Prioridade": 3, "Importante": 2, "Urgente": 1, "Regular": 0 };
   list.sort((a,b) => {
-    const r = (rank[b.classificacao] - rank[a.classificacao]);
-    if (r !== 0) return r;
-    if (a.prazo !== b.prazo) return a.prazo.localeCompare(b.prazo);
-    return (a.tarefa || "").localeCompare(b.tarefa || "");
+    const byDate = a.prazo.localeCompare(b.prazo);
+    if (byDate !== 0) return byDate;
+    const byRank = (rank[b.classificacao] - rank[a.classificacao]);
+    if (byRank !== 0) return byRank;
+    return a.tarefa.localeCompare(b.tarefa);
   });
 
   return list;
 }
 
-/* ========= Render Lista ========= */
 function render(){
+  setBottomActive();
+
   const list = getFiltered();
 
-  // badge atrasadas: agora mostra total geral (não só do dia)
+  // título
+  if (showOverdueOnly) {
+    listTitle.textContent = "Atrasadas";
+  } else if (showFuture) {
+    listTitle.textContent = `Tarefas a partir de ${formatBR(selectedDate)}`;
+  } else {
+    listTitle.textContent = "Tarefas do dia";
+  }
+
+  // badge
   const overdueCount = tasks.filter(isOverdue).length;
   overdueBadge.hidden = overdueCount === 0;
   overdueBadge.textContent = `Atrasadas: ${overdueCount}`;
@@ -460,12 +352,12 @@ function render(){
 
         <div class="task__right">
           <div class="pill ${isOverdue(t) ? "pill--red" : "pill--blue"}">${escapeHtml(t.status)}</div>
-          <button class="smallbtn smallbtn--blue" data-edit="${t.id}">Editar</button>
+          <button class="smallbtn smallbtn--blue" data-edit="${t.id}" type="button">Editar</button>
         </div>
       </div>
 
       <div class="task__actions">
-        ${STATUS.map(st => `<button class="smallbtn" data-status="${st}" data-id="${t.id}">${st}</button>`).join("")}
+        ${STATUS.map(st => `<button class="smallbtn" data-status="${st}" data-id="${t.id}" type="button">${st}</button>`).join("")}
       </div>
     `;
 
@@ -475,106 +367,160 @@ function render(){
   tasksList.querySelectorAll("[data-edit]").forEach(btn => {
     btn.onclick = () => openEdit(btn.getAttribute("data-edit"));
   });
-
   tasksList.querySelectorAll("[data-status]").forEach(btn => {
-    btn.onclick = async () => {
-      await quickStatus(btn.getAttribute("data-id"), btn.getAttribute("data-status"));
-    };
+    btn.onclick = () => quickStatus(btn.getAttribute("data-id"), btn.getAttribute("data-status"));
   });
 }
 
-/* ========= Ações ========= */
+/* ========= CRUD local + modal ========= */
+function clearForm(){
+  fCliente.value = "";
+  fCpf.value = "";
+  fTipo.value = TIPOS[0];
+  fTarefa.value = "";
+  fPrazo.value = selectedDate;
+  fStatus.value = STATUS[0];
+  fClass.value = CLASSIF[0];
+  fObs.value = "";
+}
+
+function openNew(){
+  editingId = null;
+  modalTitle.textContent = "Nova demanda";
+  btnDelete.hidden = true;
+  clearForm();
+  openModal();
+}
+
+function openEdit(id){
+  const t = tasks.find(x => x.id === id);
+  if (!t) return;
+
+  editingId = id;
+  modalTitle.textContent = "Editar demanda";
+  btnDelete.hidden = false;
+
+  fCliente.value = t.cliente;
+  fCpf.value = t.cpf;
+  fTipo.value = t.tipo;
+  fTarefa.value = t.tarefa;
+  fPrazo.value = t.prazo;
+  fStatus.value = t.status;
+  fClass.value = t.classificacao;
+  fObs.value = t.observacoes || "";
+
+  openModal();
+}
+
 async function quickStatus(id, status){
   const t = tasks.find(x => x.id === id);
   if (!t) return;
+
   t.status = status;
   t.updatedAt = new Date().toISOString();
-  await upsertToCloud(t);
-  render();
+
+  try{
+    await upsertToCloud(t);
+    // “verdade” do banco
+    tasks = await loadFromCloud();
+    renderWeek();
+    render();
+  }catch(err){
+    alert("Erro ao atualizar status: " + err.message);
+  }
 }
 
 async function removeTask(){
   if (!editingId) return;
-  const id = editingId;
 
-  // otimista
-  tasks = tasks.filter(x => x.id !== id);
-  closeModal();
-  render();
+  if (!confirm("Excluir esta demanda?")) return;
 
-  await deleteFromCloud(id);
-
-  // garante consistência
-  tasks = await loadFromCloud();
-  renderWeek();
-  render();
+  try{
+    await deleteFromCloud(editingId);
+    tasks = await loadFromCloud();
+    closeModal();
+    renderWeek();
+    render();
+  }catch(err){
+    alert("Erro ao excluir: " + err.message);
+  }
 }
 
-/* ========= Validação + Salvar ========= */
+/* ========= Salvar ========= */
 async function submitForm(e){
   e.preventDefault();
+  if (isSaving) return; // ✅ impede duplo clique
+  isSaving = true;
 
-  const cliente = fCliente.value.trim();
-  const cpf = fCpf.value.trim();
-  const tipo = fTipo.value;
-  const tarefa = fTarefa.value.trim();
-  const prazo = fPrazo.value;
-  const status = fStatus.value;
-  const classificacao = fClass.value;
-  const observacoes = fObs.value.trim();
+  const submitBtn = taskForm.querySelector('button[type="submit"]');
+  const oldLabel = submitBtn ? submitBtn.textContent : "";
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Salvando..."; }
 
-  if (!cliente || !cpf || !tipo || !tarefa || !prazo || !status || !classificacao) {
-    alert("Preencha todos os campos obrigatórios (*)");
-    return;
+  try{
+    const cliente = fCliente.value.trim();
+    const cpf = fCpf.value.trim();
+    const tipo = fTipo.value;
+    const tarefa = fTarefa.value.trim();
+    const prazo = fPrazo.value;
+    const status = fStatus.value;
+    const classificacao = fClass.value;
+    const observacoes = fObs.value.trim();
+
+    if (!cliente || !cpf || !tipo || !tarefa || !prazo || !status || !classificacao) {
+      alert("Preencha todos os campos obrigatórios (*)");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    let taskToSave;
+
+    if (editingId){
+      const t = tasks.find(x => x.id === editingId);
+      if (!t) return;
+
+      t.cliente = cliente;
+      t.cpf = cpf;
+      t.tipo = tipo;
+      t.tarefa = tarefa;
+      t.prazo = prazo;
+      t.status = status;
+      t.classificacao = classificacao;
+      t.observacoes = observacoes;
+      t.updatedAt = now;
+
+      taskToSave = t;
+    } else {
+      taskToSave = {
+        id: crypto.randomUUID(),
+        cliente, cpf, tipo, tarefa, prazo, status,
+        classificacao,
+        observacoes,
+        createdAt: now,
+        updatedAt: now
+      };
+    }
+
+    await upsertToCloud(taskToSave);
+
+    // ✅ evita duplicação: sempre recarrega do banco após salvar
+    tasks = await loadFromCloud();
+
+    closeModal();
+    selectedDate = prazo;
+    showFuture = true;       // ✅ após salvar, já mostra “a partir do dia”
+    showOverdueOnly = false;
+
+    renderWeek();
+    render();
+  }catch(err){
+    alert("Erro ao salvar: " + err.message);
+  }finally{
+    isSaving = false;
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldLabel; }
   }
-
-  const now = new Date().toISOString();
-  let task;
-
-  if (editingId){
-    task = tasks.find(x => x.id === editingId);
-    if (!task) return;
-
-    task.cliente = cliente;
-    task.cpf = cpf;
-    task.tipo = tipo;
-    task.tarefa = tarefa;
-    task.prazo = prazo;
-    task.status = status;
-    task.classificacao = classificacao;
-    task.observacoes = observacoes;
-    task.updatedAt = now;
-  } else {
-    task = {
-      id: crypto.randomUUID(),
-      cliente,
-      cpf,
-      tipo,
-      tarefa,
-      prazo,
-      status,
-      classificacao,
-      observacoes,
-      createdAt: now,
-      updatedAt: now
-    };
-    tasks.push(task);
-  }
-
-  await upsertToCloud(task);
-
-  closeModal();
-
-  // ✅ agora você consegue “ver” qualquer tarefa criada em data futura:
-  selectedDate = prazo;
-  onlyOverdue = false;
-  btnOverdue.classList.remove("bottom__btn--active");
-
-  renderWeek();
-  render();
 }
 
-/* ========= CPF mask (000.000.000-00) ========= */
+/* ========= CPF mask ========= */
 fCpf.addEventListener("input", () => {
   const digits = fCpf.value.replace(/\D/g, "").slice(0, 11);
   let out = digits;
@@ -585,9 +531,7 @@ fCpf.addEventListener("input", () => {
 });
 
 /* ========= Exportar PDF ========= */
-function exportPDF(){
-  window.print();
-}
+function exportPDF(){ window.print(); }
 
 /* ========= Escape HTML ========= */
 function escapeHtml(s){
@@ -596,68 +540,83 @@ function escapeHtml(s){
   }[m]));
 }
 
-/* ========= Eventos de UI ========= */
+/* ========= Eventos ========= */
 btnNew.onclick = openNew;
 btnClose.onclick = closeModal;
 modal.onclick = (e) => { if (e.target === modal) closeModal(); };
 
 btnToday.onclick = () => {
   selectedDate = isoToday();
-  onlyOverdue = false;
-  btnOverdue.classList.remove("bottom__btn--active");
+  showOverdueOnly = false;
+  showFuture = true;
+  renderWeek();
+  render();
+};
+
+btnFuture.onclick = () => {
+  showOverdueOnly = false;
+  showFuture = !showFuture;
   renderWeek();
   render();
 };
 
 btnOverdue.onclick = () => {
-  onlyOverdue = !onlyOverdue;
-  btnOverdue.classList.toggle("bottom__btn--active", onlyOverdue);
+  showOverdueOnly = !showOverdueOnly;
+  renderWeek();
   render();
 };
 
 btnExport.onclick = exportPDF;
-btnDelete.onclick = async () => { await removeTask(); };
+btnDelete.onclick = removeTask;
 
-taskForm.onsubmit = async (e) => { await submitForm(e); };
+taskForm.onsubmit = submitForm;
 
 [searchInput, typeFilter, statusFilter, classFilter].forEach(el => {
   el.addEventListener("input", render);
   el.addEventListener("change", render);
 });
 
+btnPrevWeek?.addEventListener("click", () => shiftWeek(-7));
+btnNextWeek?.addEventListener("click", () => shiftWeek(7));
+
+// atalhos teclado
+document.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowLeft") shiftWeek(-7);
+  if (e.key === "ArrowRight") shiftWeek(7);
+  if (e.key.toLowerCase() === "f") {
+    showOverdueOnly = false;
+    showFuture = !showFuture;
+    renderWeek();
+    render();
+  }
+});
+
 /* ========= Login ========= */
-btnLogin.onclick = async () => {
+btnLogin.addEventListener("click", async (e) => {
+  e.preventDefault();
+
   const email = aEmail.value.trim();
   const password = aPass.value.trim();
+  if (!email || !password) return alert("Informe email e senha.");
 
   const { error } = await db.auth.signInWithPassword({ email, password });
   if (error) return alert("Login falhou: " + error.message);
 
-  closeAuth();
+  await afterLogin();
+});
 
+async function afterLogin(){
+  closeAuth();
   tasks = await loadFromCloud();
   await startRealtime();
   renderWeek();
   render();
-};
-
-function toggleFuture(){
-  showFuture = !showFuture;
-
-  // se ligar Futuras, desliga Atrasadas (pra não confundir)
-  if (showFuture) {
-    onlyOverdue = false;
-    btnOverdue.classList.remove("bottom__btn--active");
-  }
-
-  render();
 }
 
-
-/* ========= Start ========= */
+/* ========= INIT ========= */
 async function init(){
-  setupOptionsOnce();
   closeModal();
+  setupSelectsOnce();
 
   const user = await getUser();
   if (!user) {
@@ -665,12 +624,7 @@ async function init(){
     return;
   }
 
-  closeAuth();
-  tasks = await loadFromCloud();
-  await startRealtime();
-
-  renderWeek();
-  render();
+  await afterLogin();
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(()=>{});
