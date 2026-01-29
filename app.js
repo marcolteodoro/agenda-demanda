@@ -1,3 +1,8 @@
+const SUPABASE_URL = "https://swxcryxuqumhbvvbfhvk.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_JlSGIsbRrbFgyZb4ZnxNww_FomT7ukQ";
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+
 /* ========= Config / "tabelas" fixas ========= */
 const TIPOS = [
   "Habitação","Investimento","Crédito","Consórcio","Seguridade",
@@ -51,14 +56,111 @@ function isOverdue(t){
   return toDate(t.prazo) < toDate(isoToday());
 }
 
-/* ========= Storage ========= */
-function load(){
-  const raw = localStorage.getItem(LS_KEY);
-  tasks = raw ? JSON.parse(raw) : [];
+async function loadFromCloud() {
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await db
+    .from("demandas")
+    .select("*")
+    .eq("user_id", user.id);
+
+  if (error) {
+    alert("Erro ao carregar do Supabase: " + error.message);
+    return [];
+  }
+
+  // converte nomes do banco -> nomes do app
+  return (data || []).map(r => ({
+    id: r.id,
+    cliente: r.cliente,
+    cpf: r.cpf,
+    tipo: r.tipo,
+    tarefa: r.tarefa,
+    prazo: r.prazo,
+    status: r.status,
+    classificacao: r.classificacao,
+    observacoes: r.observacoes || "",
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  }));
 }
-function save(){
-  localStorage.setItem(LS_KEY, JSON.stringify(tasks));
+
+function openAuth(){ authModal.hidden = false; }
+function closeAuth(){ authModal.hidden = true; }
+
+btnLogin.onclick = async () => {
+  const email = aEmail.value.trim();
+  const password = aPass.value.trim();
+
+  const { error } = await db.auth.signInWithPassword({ email, password });
+  if (error) return alert("Login falhou: " + error.message);
+
+  closeAuth();
+
+  tasks = await loadFromCloud();
+  await startRealtime();
+  renderWeek();
+  render();
+};
+
+
+async function upsertToCloud(task) {
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) return;
+
+  const row = {
+    id: task.id,
+    user_id: user.id,
+    cliente: task.cliente,
+    cpf: task.cpf,
+    tipo: task.tipo,
+    tarefa: task.tarefa,
+    prazo: task.prazo,
+    status: task.status,
+    classificacao: task.classificacao,
+    observacoes: task.observacoes || ""
+  };
+
+  const { error } = await db.from("demandas").upsert(row);
+  if (error) alert("Erro ao salvar: " + error.message);
 }
+
+async function deleteFromCloud(id) {
+  const { error } = await db.from("demandas").delete().eq("id", id);
+  if (error) alert("Erro ao excluir: " + error.message);
+}
+
+let realtimeChannel = null;
+
+async function startRealtime() {
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) return;
+
+  if (realtimeChannel) {
+    await db.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+
+  realtimeChannel = db
+    .channel("demandas-sync")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "demandas",
+        filter: `user_id=eq.${user.id}`
+      },
+      async () => {
+        tasks = await loadFromCloud();
+        renderWeek();
+        render();
+      }
+    )
+    .subscribe();
+}
+
 
 /* ========= DOM refs ========= */
 const weekLabel = document.getElementById("weekLabel");
@@ -92,34 +194,49 @@ const fStatus = document.getElementById("fStatus");
 const fClass = document.getElementById("fClass");
 const fObs = document.getElementById("fObs");
 
+const authModal = document.getElementById("authModal");
+const aEmail = document.getElementById("aEmail");
+const aPass = document.getElementById("aPass");
+const btnLogin = document.getElementById("btnLogin");
+
+
 /* ========= UI init ========= */
 function fillSelect(select, arr){
   select.innerHTML = arr.map(v => `<option value="${v}">${v}</option>`).join("");
 }
 
-function init(){
-  load();
+async function init(){
+  closeModal(); // mantém cadastro fechado
 
-  // Preenche selects do formulário
+  // checa sessão
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) {
+    openAuth();
+    return;
+  }
+
+  tasks = await loadFromCloud();
+  await startRealtime();
+
+  // (o resto do seu init continua igual:)
   fillSelect(fTipo, TIPOS);
   fillSelect(fStatus, STATUS);
   fillSelect(fClass, CLASSIF);
 
-  // Preenche filtros
   TIPOS.forEach(v => typeFilter.insertAdjacentHTML("beforeend", `<option value="${v}">${v}</option>`));
   STATUS.forEach(v => statusFilter.insertAdjacentHTML("beforeend", `<option value="${v}">${v}</option>`));
   CLASSIF.forEach(v => classFilter.insertAdjacentHTML("beforeend", `<option value="${v}">${v}</option>`));
 
   renderWeek();
   render();
-
   closeModal();
 
-  // Service Worker (offline)
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(()=>{});
   }
 }
+
+init();
 
 /* ========= Render Semana ========= */
 function renderWeek(){
@@ -297,13 +414,15 @@ function quickStatus(id, status){
 function removeTask(){
   if (!editingId) return;
   tasks = tasks.filter(x => x.id !== editingId);
-  save();
-  closeModal();
-  render();
+  await deleteFromCloud(editingId);
+tasks = tasks.filter(x => x.id !== editingId);
+closeModal();
+render();
+
 }
 
 /* ========= Validação + Salvar ========= */
-function submitForm(e){
+async function submitForm(e){
   e.preventDefault();
 
   const cliente = fCliente.value.trim();
@@ -351,7 +470,45 @@ function submitForm(e){
     });
   }
 
-  save();
+  let taskQueVoceSalvou = null;
+
+if (editingId) {
+  // você já tem o objeto "t" (o que está editando)
+  // ... (suas linhas t.cliente = ..., etc)
+
+  taskQueVoceSalvou = t;
+
+} else {
+  // em vez de jogar direto no push, cria o objeto:
+  const novo = {
+    id: crypto.randomUUID(),
+    cliente,
+    cpf,
+    tipo,
+    tarefa,
+    prazo,
+    status,
+    classificacao: classificacao,
+    observacoes,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  tasks.push(novo);
+  taskQueVoceSalvou = novo;
+}
+
+// ⬇️ AQUI entra o passo G: grava na nuvem
+await upsertToCloud(taskQueVoceSalvou);
+
+// (opcional) se você quiser “verdade absoluta” vindo do banco:
+// await load();
+
+closeModal();
+selectedDate = prazo;
+renderWeek();
+render();
+
   closeModal();
 
   // Se você salvou um prazo diferente do dia selecionado, muda a tela pro prazo salvo
