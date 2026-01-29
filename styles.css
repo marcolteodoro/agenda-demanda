@@ -544,3 +544,58 @@ body.modal-open{
   width: 100%;
   overflow: hidden;
 }
+
+
+/* =========================
+   iPhone: impedir “dançar”
+   (scroll lateral do body)
+   ========================= */
+html, body{
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden; /* corta qualquer sobra lateral */
+}
+
+.main{
+  overflow-x: hidden;
+}
+
+/* garante que cards não vazem */
+.task{
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* ✅ AQUI é onde geralmente estoura:
+   4 botões de status em linha no mobile.
+   Transformamos em grid que NUNCA passa da largura. */
+.task__actions{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.task__actions .smallbtn{
+  min-width: 0;         /* crucial pra não forçar largura */
+  text-align: center;
+}
+
+/* no iPhone: 2 por linha (fica bonito e não estoura) */
+@media (max-width: 520px){
+  .task__actions{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* =========================
+   iOS: input date (Prazo)
+   - fica maior e centralizado por padrão
+   ========================= */
+input[type="date"].input{
+  height: 52px;          /* igual aos outros */
+}
+
+/* no Safari iOS o texto do date fica dentro desse pseudo-elemento */
+input[type="date"].input::-webkit-date-and-time-value{
+  text-align: left;
+}
