@@ -351,7 +351,6 @@ function render(){
         </div>
 
         <div class="task__right">
-          <div class="pill ${isOverdue(t) ? "pill--red" : "pill--blue"}">${escapeHtml(t.status)}</div>
           <button class="smallbtn smallbtn--blue" data-edit="${t.id}" type="button">Editar</button>
         </div>
       </div>
