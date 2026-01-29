@@ -205,6 +205,10 @@ body{
   padding: 12px;
   z-index: 999;
 }
+.modal[hidden]{
+  display: none !important;
+}
+
 .modal__card{
   width: 100%;
   max-width: 560px;
