@@ -137,6 +137,7 @@ btnLogin.onclick = async () => {
   if (error) return alert("Login falhou: " + error.message);
 
   closeAuth();
+  bootstrapUI();
 
   tasks = await loadFromCloud();
   await startRealtime();
@@ -209,9 +210,28 @@ function fillSelect(select, arr){
   select.innerHTML = arr.map(v => `<option value="${v}">${v}</option>`).join("");
 }
 
+let uiBootstrapped = false;
+
+function bootstrapUI() {
+  if (uiBootstrapped) return;
+  uiBootstrapped = true;
+
+  // Selects do formulário (modal)
+  fillSelect(fTipo, TIPOS);
+  fillSelect(fStatus, STATUS);
+  fillSelect(fClass, CLASSIF);
+
+  // Selects dos filtros (topo)
+  // Mantém sempre um "Todos" no início
+  typeFilter.innerHTML  = `<option value="">Todos</option>`  + TIPOS.map(v => `<option value="${v}">${v}</option>`).join("");
+  statusFilter.innerHTML= `<option value="">Todos</option>`  + STATUS.map(v => `<option value="${v}">${v}</option>`).join("");
+  classFilter.innerHTML = `<option value="">Todas</option>`  + CLASSIF.map(v => `<option value="${v}">${v}</option>`).join("");
+}
+
+
 async function init(){
   closeModal(); // mantém cadastro fechado
-
+  bootstrapuI();
   // checa sessão
   const { data: { user } } = await db.auth.getUser();
   if (!user) {
