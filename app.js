@@ -357,8 +357,17 @@ function render(){
       </div>
 
       <div class="task__actions">
-        ${STATUS.map(st => `<button class="smallbtn" data-status="${st}" data-id="${t.id}" type="button">${st}</button>`).join("")}
+        ${STATUS.map(st => `
+          <button
+            class="smallbtn smallbtn--status ${t.status === st ? "is-active" : ""}"
+            data-status="${st}"
+            data-st="${st}"
+            data-id="${t.id}"
+            type="button"
+          >${st}</button>
+        `).join("")}
       </div>
+
     `;
 
     tasksList.appendChild(el);
