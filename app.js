@@ -2,11 +2,18 @@ const SUPABASE_URL = "https://swxcryxuqumhbvvbfhvk.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_JlSGIsbRrbFgyZb4ZnxNww_FomT7ukQ";
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // iPhone/Safari: corrige altura real da viewport (bug do 100vh)
-function setVh() {
-  document.documentElement.style.setProperty("--vh", `${window.innerHeight * 0.01}px`);
+function setVh(){
+  const h = (window.visualViewport?.height || window.innerHeight);
+  document.documentElement.style.setProperty("--vh", `${h * 0.01}px`);
 }
 setVh();
 window.addEventListener("resize", setVh);
+
+// iPhone: quando abre teclado / date-picker, o visualViewport muda
+if (window.visualViewport){
+  window.visualViewport.addEventListener("resize", setVh);
+  window.visualViewport.addEventListener("scroll", setVh);
+}
 
 
 /* ========= Config / "tabelas" fixas ========= */
@@ -105,7 +112,11 @@ const aPass     = document.getElementById("aPass");
 const btnLogin  = document.getElementById("btnLogin");
 
 /* ========= UI helpers ========= */
-function openModal(){ modal.hidden = false; }
+function openModal(){
+  modal.hidden = false;
+  setTimeout(setVh, 50);
+}
+
 function closeModal(){ modal.hidden = true; editingId = null; }
 
 function openAuth(){ authModal.hidden = false; }
