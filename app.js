@@ -113,6 +113,8 @@ function init(){
   renderWeek();
   render();
 
+  closeModal();
+
   // Service Worker (offline)
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(()=>{});
