@@ -21,6 +21,7 @@ let realtimeChannel = null;
 let showFuture = false; // 🔥 mostra tarefas com prazo >= selectedDate
 
 
+
 /* ========= Helpers de data ========= */
 function isoToday(){
   const d = new Date();
@@ -179,6 +180,8 @@ const btnNew = document.getElementById("btnNew");
 const btnToday = document.getElementById("btnToday");
 const btnOverdue = document.getElementById("btnOverdue");
 const btnExport = document.getElementById("btnExport");
+const btnFuture = document.getElementById("btnFuture");
+
 
 const modal = document.getElementById("modal");
 const modalTitle = document.getElementById("modalTitle");
