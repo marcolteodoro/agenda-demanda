@@ -331,3 +331,38 @@ body{
     padding-bottom: 170px;
   }
 }
+
+/* ===== Status buttons (só o status atual fica colorido) ===== */
+.smallbtn--status{
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+}
+
+/* NÃO INICIADA: verde bem claro */
+.smallbtn--status.is-active[data-st="Não iniciada"]{
+  background: #E9F9EE;
+  border-color: #BFEBCB;
+  color: #1F7A3A;
+}
+
+/* EM PROGRESSO: amarelo leve */
+.smallbtn--status.is-active[data-st="Em progresso"]{
+  background: #FFF6D8;
+  border-color: #F2E1A3;
+  color: #8A6A00;
+}
+
+/* CONCLUÍDA: verde (mais forte) */
+.smallbtn--status.is-active[data-st="Concluída"]{
+  background: #DDF7E3;
+  border-color: #8FE2A3;
+  color: #0F6B2E;
+}
+
+/* COM PENDÊNCIA: vermelho */
+.smallbtn--status.is-active[data-st="Com pendência"]{
+  background: #FFE3E3;
+  border-color: #FFB3B3;
+  color: #B00020;
+}
