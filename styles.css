@@ -517,3 +517,30 @@ input[type="date"].input{
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 }
+
+
+/* iOS Safari: input date fica mais alto — forçamos altura igual */
+@supports (-webkit-touch-callout: none) {
+  input[type="date"].input{
+    height: 48px;            /* mesma altura visual */
+    padding: 0 12px;         /* tira o padding vertical do iOS */
+    line-height: 48px;       /* ajuda a centralizar o texto */
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  input[type="date"].input::-webkit-date-and-time-value{
+    line-height: 48px;
+    padding: 0;
+    margin: 0;
+  }
+}
+
+/* Quando modal abre, travamos o scroll do body (iOS fix) */
+body.modal-open{
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+  overflow: hidden;
+}
