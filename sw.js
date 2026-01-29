@@ -1,4 +1,4 @@
-const CACHE = "agenda-demandas-v1";
+const CACHE = "agenda-demandas-v2";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.json"];
 
 self.addEventListener("install", (e) => {
