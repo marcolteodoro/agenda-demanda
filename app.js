@@ -406,15 +406,17 @@ function openEdit(id){
   openModal();
 }
 
-function quickStatus(id, status){
+async function quickStatus(id, status){
   const t = tasks.find(x => x.id === id);
   if (!t) return;
+
   t.status = status;
   t.updatedAt = new Date().toISOString();
-  await upsertToCloud(t);
 
-  render();
+  render();                 // atualiza a tela imediatamente (modo “otimista”)
+  await upsertToCloud(t);   // salva na nuvem
 }
+
 
 async function removeTask(){
   if (!editingId) return;
