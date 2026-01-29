@@ -1,6 +1,13 @@
 const SUPABASE_URL = "https://swxcryxuqumhbvvbfhvk.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_JlSGIsbRrbFgyZb4ZnxNww_FomT7ukQ";
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// iPhone/Safari: corrige altura real da viewport (bug do 100vh)
+function setVh() {
+  document.documentElement.style.setProperty("--vh", `${window.innerHeight * 0.01}px`);
+}
+setVh();
+window.addEventListener("resize", setVh);
+
 
 /* ========= Config / "tabelas" fixas ========= */
 const TIPOS = [
