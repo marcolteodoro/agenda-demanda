@@ -1,7 +1,7 @@
+/* ================== SUPABASE ================== */
 const SUPABASE_URL = "https://swxcryxuqumhbvvbfhvk.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_JlSGIsbRrbFgyZb4ZnxNww_FomT7ukQ";
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 
 /* ========= Config / "tabelas" fixas ========= */
 const TIPOS = [
@@ -11,13 +11,13 @@ const TIPOS = [
 const STATUS = ["Não iniciada","Em progresso","Concluída","Com pendência"];
 const CLASSIF = ["Regular","Urgente","Importante","Prioridade"];
 
-const LS_KEY = "agenda_demandas_v1";
-
 /* ========= Estado do app ========= */
-let tasks = [];                 // lista completa
-let selectedDate = isoToday();  // YYYY-MM-DD
-let onlyOverdue = false;        // toggle do botão "Atrasadas"
-let editingId = null;           // se estiver editando, guarda o id
+let tasks = [];
+let selectedDate = isoToday();   // YYYY-MM-DD
+let onlyOverdue = false;         // toggle "Atrasadas" (agora: mostra atrasadas de TODAS as datas)
+let editingId = null;            // id em edição
+let uiReady = false;             // garante que não duplica options
+let realtimeChannel = null;
 
 /* ========= Helpers de data ========= */
 function isoToday(){
@@ -32,13 +32,12 @@ function toDate(iso){ // ISO -> Date (00:00)
   return d;
 }
 function formatBR(iso){
-  const d = toDate(iso);
-  return d.toLocaleDateString("pt-BR");
+  return toDate(iso).toLocaleDateString("pt-BR");
 }
 function startOfWeek(iso){ // segunda como início
   const d = toDate(iso);
   const day = d.getDay(); // 0 dom ... 6 sáb
-  const diff = (day === 0) ? -6 : (1 - day); // segunda
+  const diff = (day === 0) ? -6 : (1 - day);
   d.setDate(d.getDate() + diff);
   return d;
 }
@@ -56,8 +55,14 @@ function isOverdue(t){
   return toDate(t.prazo) < toDate(isoToday());
 }
 
-async function loadFromCloud() {
+/* ================== CLOUD ================== */
+async function getUser(){
   const { data: { user } } = await db.auth.getUser();
+  return user || null;
+}
+
+async function loadFromCloud() {
+  const user = await getUser();
   if (!user) return [];
 
   const { data, error } = await db
@@ -70,20 +75,90 @@ async function loadFromCloud() {
     return [];
   }
 
-  // converte nomes do banco -> nomes do app
-  return (data || []).map(r => ({
-    id: r.id,
-    cliente: r.cliente,
-    cpf: r.cpf,
-    tipo: r.tipo,
-    tarefa: r.tarefa,
-    prazo: r.prazo,
-    status: r.status,
-    classificacao: r.classificacao,
-    observacoes: r.observacoes || "",
-    createdAt: r.created_at,
-    updatedAt: r.updated_at
-  }));
+  // dedup por ID (proteção extra)
+  const map = new Map();
+  for (const r of (data || [])) {
+    map.set(r.id, {
+      id: r.id,
+      cliente: r.cliente,
+      cpf: r.cpf,
+      tipo: r.tipo,
+      tarefa: r.tarefa,
+      prazo: r.prazo,
+      status: r.status,
+      classificacao: r.classificacao,
+      observacoes: r.observacoes || "",
+      createdAt: r.created_at,
+      updatedAt: r.updated_at
+    });
+  }
+  return Array.from(map.values());
+}
+
+async function upsertToCloud(task) {
+  const user = await getUser();
+  if (!user) return;
+
+  const row = {
+    id: task.id,
+    user_id: user.id,
+    cliente: task.cliente,
+    cpf: task.cpf,
+    tipo: task.tipo,
+    tarefa: task.tarefa,
+    prazo: task.prazo,
+    status: task.status,
+    classificacao: task.classificacao,
+    observacoes: task.observacoes || ""
+  };
+
+  // ✅ evita “insert duplicado” quando seu banco não está com PK perfeita
+  const { error } = await db
+    .from("demandas")
+    .upsert(row, { onConflict: "id" });
+
+  if (error) alert("Erro ao salvar: " + error.message);
+}
+
+async function deleteFromCloud(id) {
+  const user = await getUser();
+  if (!user) return;
+
+  const { error } = await db
+    .from("demandas")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+
+  if (error) alert("Erro ao excluir: " + error.message);
+}
+
+async function startRealtime() {
+  const user = await getUser();
+  if (!user) return;
+
+  if (realtimeChannel) {
+    await db.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+
+  realtimeChannel = db
+    .channel(`demandas-sync-${user.id}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "demandas",
+        filter: `user_id=eq.${user.id}`
+      },
+      async () => {
+        tasks = await loadFromCloud();
+        renderWeek();
+        render();
+      }
+    )
+    .subscribe();
 }
 
 /* ========= DOM refs ========= */
@@ -123,151 +198,124 @@ const aEmail = document.getElementById("aEmail");
 const aPass = document.getElementById("aPass");
 const btnLogin = document.getElementById("btnLogin");
 
-
-
+/* ========= Auth modal ========= */
 function openAuth(){ authModal.hidden = false; }
 function closeAuth(){ authModal.hidden = true; }
 
-
-btnLogin.onclick = async () => {
-  const email = aEmail.value.trim();
-  const password = aPass.value.trim();
-
-  const { error } = await db.auth.signInWithPassword({ email, password });
-  if (error) return alert("Login falhou: " + error.message);
-
-  closeAuth();
-  bootstrapUI();
-
-  tasks = await loadFromCloud();
-  await startRealtime();
-  renderWeek();
-  render();
-};
-
-
-async function upsertToCloud(task) {
-  const { data: { user } } = await db.auth.getUser();
-  if (!user) return;
-
-  const row = {
-    id: task.id,
-    user_id: user.id,
-    cliente: task.cliente,
-    cpf: task.cpf,
-    tipo: task.tipo,
-    tarefa: task.tarefa,
-    prazo: task.prazo,
-    status: task.status,
-    classificacao: task.classificacao,
-    observacoes: task.observacoes || ""
-  };
-
-  const { error } = await db.from("demandas").upsert(row);
-  if (error) alert("Erro ao salvar: " + error.message);
-}
-
-async function deleteFromCloud(id) {
-  const { error } = await db.from("demandas").delete().eq("id", id);
-  if (error) alert("Erro ao excluir: " + error.message);
-}
-
-let realtimeChannel = null;
-
-async function startRealtime() {
-  const { data: { user } } = await db.auth.getUser();
-  if (!user) return;
-
-  if (realtimeChannel) {
-    await db.removeChannel(realtimeChannel);
-    realtimeChannel = null;
-  }
-
-  realtimeChannel = db
-    .channel("demandas-sync")
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "demandas",
-        filter: `user_id=eq.${user.id}`
-      },
-      async () => {
-        tasks = await loadFromCloud();
-        renderWeek();
-        render();
-      }
-    )
-    .subscribe();
-}
-
-
-
-
-/* ========= UI init ========= */
+/* ========= UI init (options) ========= */
 function fillSelect(select, arr){
   select.innerHTML = arr.map(v => `<option value="${v}">${v}</option>`).join("");
 }
 
-let uiBootstrapped = false;
+function setupOptionsOnce(){
+  if (uiReady) return;
+  uiReady = true;
 
-function bootstrapUI() {
-  if (uiBootstrapped) return;
-  uiBootstrapped = true;
-
-  // Selects do formulário (modal)
+  // selects do formulário (sempre reseta)
   fillSelect(fTipo, TIPOS);
   fillSelect(fStatus, STATUS);
   fillSelect(fClass, CLASSIF);
 
-  // Selects dos filtros (topo)
-  // Mantém sempre um "Todos" no início
-  typeFilter.innerHTML  = `<option value="">Todos</option>`  + TIPOS.map(v => `<option value="${v}">${v}</option>`).join("");
-  statusFilter.innerHTML= `<option value="">Todos</option>`  + STATUS.map(v => `<option value="${v}">${v}</option>`).join("");
-  classFilter.innerHTML = `<option value="">Todas</option>`  + CLASSIF.map(v => `<option value="${v}">${v}</option>`).join("");
+  // filtros (sempre reseta e cria o "Todos" 1x)
+  typeFilter.innerHTML = `<option value="">Tipo: Todos</option>` + TIPOS.map(v => `<option value="${v}">${v}</option>`).join("");
+  statusFilter.innerHTML = `<option value="">Status: Todos</option>` + STATUS.map(v => `<option value="${v}">${v}</option>`).join("");
+  classFilter.innerHTML = `<option value="">Classificação: Todas</option>` + CLASSIF.map(v => `<option value="${v}">${v}</option>`).join("");
 }
 
-
-async function init(){
-  closeModal(); // mantém cadastro fechado
-  bootstrapuI();
-  // checa sessão
-  const { data: { user } } = await db.auth.getUser();
-  if (!user) {
-    openAuth();
-    return;
-  }
-
-  tasks = await loadFromCloud();
-  await startRealtime();
-
-  // (o resto do seu init continua igual:)
-  fillSelect(fTipo, TIPOS);
-  fillSelect(fStatus, STATUS);
-  fillSelect(fClass, CLASSIF);
-
-  TIPOS.forEach(v => typeFilter.insertAdjacentHTML("beforeend", `<option value="${v}">${v}</option>`));
-  STATUS.forEach(v => statusFilter.insertAdjacentHTML("beforeend", `<option value="${v}">${v}</option>`));
-  CLASSIF.forEach(v => classFilter.insertAdjacentHTML("beforeend", `<option value="${v}">${v}</option>`));
-
+/* ========= Semana: navegar para data futura ========= */
+function shiftWeek(deltaDays){
+  selectedDate = iso(addDays(toDate(selectedDate), deltaDays));
   renderWeek();
   render();
-  closeModal();
-
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(()=>{});
-  }
 }
 
-init();
+// clique no título da semana -> abre seletor de data (pular pra qualquer dia)
+(function makeWeekLabelJump(){
+  if (!weekLabel) return;
+  const jump = document.createElement("input");
+  jump.type = "date";
+  jump.style.position = "fixed";
+  jump.style.left = "-9999px";
+  jump.style.top = "-9999px";
+  document.body.appendChild(jump);
+
+  weekLabel.style.cursor = "pointer";
+  weekLabel.title = "Clique para escolher uma data";
+
+  weekLabel.addEventListener("click", () => {
+    jump.value = selectedDate;
+    if (jump.showPicker) jump.showPicker();
+    else jump.click();
+  });
+
+  jump.addEventListener("change", () => {
+    if (!jump.value) return;
+    selectedDate = jump.value;
+    onlyOverdue = false;
+    btnOverdue.classList.remove("bottom__btn--active");
+    renderWeek();
+    render();
+  });
+
+  // atalhos: seta esquerda/direita troca semana
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") shiftWeek(-7);
+    if (e.key === "ArrowRight") shiftWeek(7);
+  });
+})();
+
+/* ========= Modal demanda ========= */
+function openModal(){
+  modal.hidden = false;
+}
+function closeModal(){
+  modal.hidden = true;
+  editingId = null;
+}
+function clearForm(){
+  fCliente.value = "";
+  fCpf.value = "";
+  fTipo.value = TIPOS[0];
+  fTarefa.value = "";
+  fPrazo.value = selectedDate;
+  fStatus.value = STATUS[0];
+  fClass.value = CLASSIF[0];
+  fObs.value = "";
+}
+function openNew(){
+  editingId = null;
+  modalTitle.textContent = "Nova demanda";
+  btnDelete.hidden = true;
+  clearForm();
+  openModal();
+}
+function openEdit(id){
+  const t = tasks.find(x => x.id === id);
+  if (!t) return;
+
+  editingId = id;
+  modalTitle.textContent = "Editar demanda";
+  btnDelete.hidden = false;
+
+  fCliente.value = t.cliente;
+  fCpf.value = t.cpf;
+  fTipo.value = t.tipo;
+  fTarefa.value = t.tarefa;
+  fPrazo.value = t.prazo;
+  fStatus.value = t.status;
+  fClass.value = t.classificacao;
+  fObs.value = t.observacoes || "";
+
+  openModal();
+}
 
 /* ========= Render Semana ========= */
 function renderWeek(){
   const start = startOfWeek(selectedDate);
   const end = addDays(start, 6);
 
-  weekLabel.textContent = `${end.toLocaleDateString("pt-BR", { day:"2-digit", month:"short" })} (semana)` +
+  weekLabel.textContent =
+    `${end.toLocaleDateString("pt-BR", { day:"2-digit", month:"short" })} (semana)` +
     ` | Início: ${start.toLocaleDateString("pt-BR")}`;
 
   weekRow.innerHTML = "";
@@ -300,29 +348,40 @@ function getFiltered(){
 
   let list = tasks.slice();
 
-  // Tarefas do dia selecionado
-  list = list.filter(x => x.prazo === selectedDate);
+  const hasSearch = q.length > 0;
 
-  // Toggle atrasadas
-  if (onlyOverdue) list = list.filter(isOverdue);
+  // ✅ comportamento novo:
+  // - se Atrasadas ligado: mostra atrasadas de TODAS as datas
+  // - se tem busca: busca em TODAS as datas
+  // - senão: mostra só o dia selecionado
+  if (onlyOverdue) {
+    list = list.filter(isOverdue);
+  } else if (!hasSearch) {
+    list = list.filter(x => x.prazo === selectedDate);
+  }
 
-  // Filtros
+  // filtros
   if (t) list = list.filter(x => x.tipo === t);
   if (s) list = list.filter(x => x.status === s);
   if (c) list = list.filter(x => x.classificacao === c);
 
-  // Busca
-  if (q){
+  // busca
+  if (hasSearch){
     list = list.filter(x =>
-      x.cliente.toLowerCase().includes(q) ||
-      x.tarefa.toLowerCase().includes(q) ||
-      x.cpf.toLowerCase().includes(q)
+      (x.cliente || "").toLowerCase().includes(q) ||
+      (x.tarefa || "").toLowerCase().includes(q) ||
+      (x.cpf || "").toLowerCase().includes(q)
     );
   }
 
-  // Ordenação por prazo (mesmo dia) e prioridade (simples: Prioridade > Importante > Urgente > Regular)
+  // ordenação
   const rank = { "Prioridade": 3, "Importante": 2, "Urgente": 1, "Regular": 0 };
-  list.sort((a,b) => (rank[b.classificacao] - rank[a.classificacao]) || a.tarefa.localeCompare(b.tarefa));
+  list.sort((a,b) => {
+    const r = (rank[b.classificacao] - rank[a.classificacao]);
+    if (r !== 0) return r;
+    if (a.prazo !== b.prazo) return a.prazo.localeCompare(b.prazo);
+    return (a.tarefa || "").localeCompare(b.tarefa || "");
+  });
 
   return list;
 }
@@ -331,8 +390,8 @@ function getFiltered(){
 function render(){
   const list = getFiltered();
 
-  // badge de atrasadas (considera o dia selecionado)
-  const overdueCount = tasks.filter(x => x.prazo === selectedDate && isOverdue(x)).length;
+  // badge atrasadas: agora mostra total geral (não só do dia)
+  const overdueCount = tasks.filter(isOverdue).length;
   overdueBadge.hidden = overdueCount === 0;
   overdueBadge.textContent = `Atrasadas: ${overdueCount}`;
 
@@ -370,82 +429,42 @@ function render(){
     tasksList.appendChild(el);
   });
 
-  // Botões dentro da lista (delegação)
   tasksList.querySelectorAll("[data-edit]").forEach(btn => {
     btn.onclick = () => openEdit(btn.getAttribute("data-edit"));
   });
+
   tasksList.querySelectorAll("[data-status]").forEach(btn => {
-    btn.onclick = () => quickStatus(btn.getAttribute("data-id"), btn.getAttribute("data-status"));
+    btn.onclick = async () => {
+      await quickStatus(btn.getAttribute("data-id"), btn.getAttribute("data-status"));
+    };
   });
 }
 
 /* ========= Ações ========= */
-function openModal(){
-  modal.hidden = false;
-}
-function closeModal(){
-  modal.hidden = true;
-  editingId = null;
-}
-
-function clearForm(){
-  fCliente.value = "";
-  fCpf.value = "";
-  fTipo.value = TIPOS[0];
-  fTarefa.value = "";
-  fPrazo.value = selectedDate;
-  fStatus.value = STATUS[0];
-  fClass.value = CLASSIF[0];
-  fObs.value = "";
-}
-
-function openNew(){
-  editingId = null;
-  modalTitle.textContent = "Nova demanda";
-  btnDelete.hidden = true;
-  clearForm();
-  openModal();
-}
-function openEdit(id){
-  const t = tasks.find(x => x.id === id);
-  if (!t) return;
-
-  editingId = id;
-  modalTitle.textContent = "Editar demanda";
-  btnDelete.hidden = false;
-
-  fCliente.value = t.cliente;
-  fCpf.value = t.cpf;
-  fTipo.value = t.tipo;
-  fTarefa.value = t.tarefa;
-  fPrazo.value = t.prazo;
-  fStatus.value = t.status;
-  fClass.value = t.classificacao;
-  fObs.value = t.observacoes || "";
-
-  openModal();
-}
-
 async function quickStatus(id, status){
   const t = tasks.find(x => x.id === id);
   if (!t) return;
-
   t.status = status;
   t.updatedAt = new Date().toISOString();
-
-  render();                 // atualiza a tela imediatamente (modo “otimista”)
-  await upsertToCloud(t);   // salva na nuvem
+  await upsertToCloud(t);
+  render();
 }
-
 
 async function removeTask(){
   if (!editingId) return;
-  tasks = tasks.filter(x => x.id !== editingId);
-  await deleteFromCloud(editingId);
-tasks = tasks.filter(x => x.id !== editingId);
-closeModal();
-render();
+  const id = editingId;
 
+  // otimista
+  tasks = tasks.filter(x => x.id !== id);
+  closeModal();
+  render();
+
+  await deleteFromCloud(id);
+
+  // garante consistência
+  tasks = await loadFromCloud();
+  renderWeek();
+  render();
 }
 
 /* ========= Validação + Salvar ========= */
@@ -467,22 +486,23 @@ async function submitForm(e){
   }
 
   const now = new Date().toISOString();
+  let task;
 
   if (editingId){
-    const t = tasks.find(x => x.id === editingId);
-    if (!t) return;
+    task = tasks.find(x => x.id === editingId);
+    if (!task) return;
 
-    t.cliente = cliente;
-    t.cpf = cpf;
-    t.tipo = tipo;
-    t.tarefa = tarefa;
-    t.prazo = prazo;
-    t.status = status;
-    t.classificacao = classificacao;
-    t.observacoes = observacoes;
-    t.updatedAt = now;
+    task.cliente = cliente;
+    task.cpf = cpf;
+    task.tipo = tipo;
+    task.tarefa = tarefa;
+    task.prazo = prazo;
+    task.status = status;
+    task.classificacao = classificacao;
+    task.observacoes = observacoes;
+    task.updatedAt = now;
   } else {
-    tasks.push({
+    task = {
       id: crypto.randomUUID(),
       cliente,
       cpf,
@@ -494,52 +514,19 @@ async function submitForm(e){
       observacoes,
       createdAt: now,
       updatedAt: now
-    });
+    };
+    tasks.push(task);
   }
 
-  let taskQueVoceSalvou = null;
-
-if (editingId) {
-  // você já tem o objeto "t" (o que está editando)
-  // ... (suas linhas t.cliente = ..., etc)
-
-  taskQueVoceSalvou = t;
-
-} else {
-  // em vez de jogar direto no push, cria o objeto:
-  const novo = {
-    id: crypto.randomUUID(),
-    cliente,
-    cpf,
-    tipo,
-    tarefa,
-    prazo,
-    status,
-    classificacao: classificacao,
-    observacoes,
-    createdAt: now,
-    updatedAt: now
-  };
-
-  tasks.push(novo);
-  taskQueVoceSalvou = novo;
-}
-
-// ⬇️ AQUI entra o passo G: grava na nuvem
-await upsertToCloud(taskQueVoceSalvou);
-
-// (opcional) se você quiser “verdade absoluta” vindo do banco:
-// await load();
-
-closeModal();
-selectedDate = prazo;
-renderWeek();
-render();
+  await upsertToCloud(task);
 
   closeModal();
 
-  // Se você salvou um prazo diferente do dia selecionado, muda a tela pro prazo salvo
+  // ✅ agora você consegue “ver” qualquer tarefa criada em data futura:
   selectedDate = prazo;
+  onlyOverdue = false;
+  btnOverdue.classList.remove("bottom__btn--active");
+
   renderWeek();
   render();
 }
@@ -554,10 +541,7 @@ fCpf.addEventListener("input", () => {
   fCpf.value = out;
 });
 
-/* ========= Exportar PDF =========
-   No iPhone, isso abre a tela de impressão.
-   Aí você salva como PDF pelo compartilhamento.
-*/
+/* ========= Exportar PDF ========= */
 function exportPDF(){
   window.print();
 }
@@ -589,14 +573,52 @@ btnOverdue.onclick = () => {
 };
 
 btnExport.onclick = exportPDF;
-btnDelete.onclick = removeTask;
+btnDelete.onclick = async () => { await removeTask(); };
 
-taskForm.onsubmit = submitForm;
+taskForm.onsubmit = async (e) => { await submitForm(e); };
 
 [searchInput, typeFilter, statusFilter, classFilter].forEach(el => {
   el.addEventListener("input", render);
   el.addEventListener("change", render);
 });
 
+/* ========= Login ========= */
+btnLogin.onclick = async () => {
+  const email = aEmail.value.trim();
+  const password = aPass.value.trim();
+
+  const { error } = await db.auth.signInWithPassword({ email, password });
+  if (error) return alert("Login falhou: " + error.message);
+
+  closeAuth();
+
+  tasks = await loadFromCloud();
+  await startRealtime();
+  renderWeek();
+  render();
+};
+
 /* ========= Start ========= */
+async function init(){
+  setupOptionsOnce();
+  closeModal();
+
+  const user = await getUser();
+  if (!user) {
+    openAuth();
+    return;
+  }
+
+  closeAuth();
+  tasks = await loadFromCloud();
+  await startRealtime();
+
+  renderWeek();
+  render();
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./sw.js").catch(()=>{});
+  }
+}
+
 init();
