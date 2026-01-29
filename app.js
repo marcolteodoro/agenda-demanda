@@ -86,8 +86,48 @@ async function loadFromCloud() {
   }));
 }
 
+/* ========= DOM refs ========= */
+const weekLabel = document.getElementById("weekLabel");
+const weekRow = document.getElementById("weekRow");
+const tasksList = document.getElementById("tasksList");
+const emptyState = document.getElementById("emptyState");
+const overdueBadge = document.getElementById("overdueBadge");
+
+const searchInput = document.getElementById("searchInput");
+const typeFilter = document.getElementById("typeFilter");
+const statusFilter = document.getElementById("statusFilter");
+const classFilter = document.getElementById("classFilter");
+
+const btnNew = document.getElementById("btnNew");
+const btnToday = document.getElementById("btnToday");
+const btnOverdue = document.getElementById("btnOverdue");
+const btnExport = document.getElementById("btnExport");
+
+const modal = document.getElementById("modal");
+const modalTitle = document.getElementById("modalTitle");
+const btnClose = document.getElementById("btnClose");
+const btnDelete = document.getElementById("btnDelete");
+const taskForm = document.getElementById("taskForm");
+
+const fCliente = document.getElementById("fCliente");
+const fCpf = document.getElementById("fCpf");
+const fTipo = document.getElementById("fTipo");
+const fTarefa = document.getElementById("fTarefa");
+const fPrazo = document.getElementById("fPrazo");
+const fStatus = document.getElementById("fStatus");
+const fClass = document.getElementById("fClass");
+const fObs = document.getElementById("fObs");
+
+const authModal = document.getElementById("authModal");
+const aEmail = document.getElementById("aEmail");
+const aPass = document.getElementById("aPass");
+const btnLogin = document.getElementById("btnLogin");
+
+
+
 function openAuth(){ authModal.hidden = false; }
 function closeAuth(){ authModal.hidden = true; }
+
 
 btnLogin.onclick = async () => {
   const email = aEmail.value.trim();
@@ -162,42 +202,6 @@ async function startRealtime() {
 }
 
 
-/* ========= DOM refs ========= */
-const weekLabel = document.getElementById("weekLabel");
-const weekRow = document.getElementById("weekRow");
-const tasksList = document.getElementById("tasksList");
-const emptyState = document.getElementById("emptyState");
-const overdueBadge = document.getElementById("overdueBadge");
-
-const searchInput = document.getElementById("searchInput");
-const typeFilter = document.getElementById("typeFilter");
-const statusFilter = document.getElementById("statusFilter");
-const classFilter = document.getElementById("classFilter");
-
-const btnNew = document.getElementById("btnNew");
-const btnToday = document.getElementById("btnToday");
-const btnOverdue = document.getElementById("btnOverdue");
-const btnExport = document.getElementById("btnExport");
-
-const modal = document.getElementById("modal");
-const modalTitle = document.getElementById("modalTitle");
-const btnClose = document.getElementById("btnClose");
-const btnDelete = document.getElementById("btnDelete");
-const taskForm = document.getElementById("taskForm");
-
-const fCliente = document.getElementById("fCliente");
-const fCpf = document.getElementById("fCpf");
-const fTipo = document.getElementById("fTipo");
-const fTarefa = document.getElementById("fTarefa");
-const fPrazo = document.getElementById("fPrazo");
-const fStatus = document.getElementById("fStatus");
-const fClass = document.getElementById("fClass");
-const fObs = document.getElementById("fObs");
-
-const authModal = document.getElementById("authModal");
-const aEmail = document.getElementById("aEmail");
-const aPass = document.getElementById("aPass");
-const btnLogin = document.getElementById("btnLogin");
 
 
 /* ========= UI init ========= */
@@ -407,11 +411,12 @@ function quickStatus(id, status){
   if (!t) return;
   t.status = status;
   t.updatedAt = new Date().toISOString();
-  save();
+  await upsertToCloud(t);
+
   render();
 }
 
-function removeTask(){
+async function removeTask(){
   if (!editingId) return;
   tasks = tasks.filter(x => x.id !== editingId);
   await deleteFromCloud(editingId);
