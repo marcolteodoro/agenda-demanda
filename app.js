@@ -291,8 +291,7 @@ function shiftWeek(deltaDays){
   document.addEventListener("keydown", (e) => {
     if (e.key === "ArrowLeft") shiftWeek(-7);
     if (e.key === "ArrowRight") shiftWeek(7);
-  });
-})();
+});
 
 // Atalho: tecla F liga/desliga FUTURAS
 document.addEventListener("keydown", (e) => {
