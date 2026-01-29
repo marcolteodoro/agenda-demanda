@@ -155,12 +155,22 @@ body{
   color: var(--muted);
   margin-top: 6px;
 }
+.task__top{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:flex-start; /* garante alinhamento bom no iPhone */
+}
+
 .task__right{
   display:flex;
-  flex-direction:column;
-  align-items:flex-end;
+  flex-direction:row;     /* horizontal */
+  align-items:center;
+  justify-content:flex-end;
   gap:8px;
+  padding-top: 2px;       /* ajuste fino pra alinhar com o título */
 }
+
 .pill{
   font-size: 12px;
   padding: 6px 10px;
@@ -257,13 +267,28 @@ body{
 }
 .modal__title{ font-weight:900; }
 .modal__close{
+  -webkit-appearance: none;
+  appearance: none;
+
   border:1px solid var(--line);
   background: var(--card);
   border-radius: 12px;
-  padding: 10px 12px;
+
+  width: 44px;
+  height: 44px;
+  padding: 0;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
   cursor:pointer;
   font-weight:900;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text);
 }
+
 .label{
   display:block;
   margin: 10px 6px 6px 6px;
