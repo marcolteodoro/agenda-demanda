@@ -33,6 +33,21 @@ let editingId = null;
 let realtimeChannel = null;
 let isSaving = false;
 
+let _scrollY = 0;
+
+function lockBodyScroll(){
+  _scrollY = window.scrollY || 0;
+  document.body.classList.add("modal-open");
+  document.body.style.top = `-${_scrollY}px`;
+}
+
+function unlockBodyScroll(){
+  document.body.classList.remove("modal-open");
+  const top = document.body.style.top;
+  document.body.style.top = "";
+  window.scrollTo(0, Math.abs(parseInt(top || "0", 10)));
+}
+
 /* ========= Helpers de data ========= */
 function isoToday(){
   const d = new Date();
@@ -115,6 +130,7 @@ const btnLogin  = document.getElementById("btnLogin");
 function openModal(){
   modal.hidden = false;
   setTimeout(setVh, 50);
+  lockBodyScrool();
 }
 
 function closeModal(){ modal.hidden = true; editingId = null; }
