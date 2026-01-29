@@ -407,22 +407,49 @@ body{
   -webkit-overflow-scrolling: touch; /* scroll suave no iOS */
 }
 
-/* deixa o cabeçalho (com o X) "grudado" no topo do card enquanto você rola */
+/* ===============================
+   iPhone/Safari - modal "sheet"
+   =============================== */
+
+.modal{
+  padding: 12px;
+  padding-top: calc(12px + env(safe-area-inset-top));
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
+/* o card vira coluna e NÃO estoura a tela */
+.modal__card{
+  display: flex;
+  flex-direction: column;
+
+  /* fallback + iOS moderno */
+  max-height: calc(100vh - (24px + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+  max-height: calc(100svh - (24px + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+  max-height: calc(100dvh - (24px + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+
+  overflow: hidden; /* quem rola é o form */
+}
+
+/* cabeçalho sempre visível */
 .modal__head{
   position: sticky;
   top: 0;
+  z-index: 10;
   background: var(--bg);
-  z-index: 5;
   padding-top: 10px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--line);
 }
 
-/* evita zoom automático do Safari ao focar em input (< 16px ele dá zoom) */
-.input, .btn, .smallbtn, .modal__close{
-  font-size: 16px;
+/* >>> o formulário rola por dentro do modal <<< */
+.modal__card > .form,
+.modal__card > form.form{
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
 }
 
-/* dá um respiro pro botão salvar não ficar colado no fundo */
-.form__actions{
-  padding-bottom: calc(6px + env(safe-area-inset-bottom));
+/* evita zoom do Safari ao focar */
+.input, .btn, .smallbtn, .modal__close{
+  font-size: 16px;
 }
