@@ -391,3 +391,38 @@ body{
   border-color: #FFB3B3;
   color: #B00020;
 }
+
+/* ===== iPhone / Safari: modal não pode ocupar a tela inteira sem scroll interno ===== */
+
+/* melhora o cálculo de altura no iOS moderno */
+.modal{
+  padding-top: calc(12px + env(safe-area-inset-top));
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
+/* limita altura do card e ativa scroll interno */
+.modal__card{
+  max-height: calc(100dvh - (24px + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+  overflow: auto;
+  -webkit-overflow-scrolling: touch; /* scroll suave no iOS */
+}
+
+/* deixa o cabeçalho (com o X) "grudado" no topo do card enquanto você rola */
+.modal__head{
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 5;
+  padding-top: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* evita zoom automático do Safari ao focar em input (< 16px ele dá zoom) */
+.input, .btn, .smallbtn, .modal__close{
+  font-size: 16px;
+}
+
+/* dá um respiro pro botão salvar não ficar colado no fundo */
+.form__actions{
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
+}
