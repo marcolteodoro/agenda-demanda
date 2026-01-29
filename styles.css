@@ -392,64 +392,52 @@ body{
   color: #B00020;
 }
 
-/* ===== iPhone / Safari: modal não pode ocupar a tela inteira sem scroll interno ===== */
+/* =========================================================
+   iPhone/Safari: modal com altura correta + header visível
+   (evita o bug do 100vh quando a barra do Safari muda)
+   ========================================================= */
 
-/* melhora o cálculo de altura no iOS moderno */
-.modal{
-  padding-top: calc(12px + env(safe-area-inset-top));
-  padding-bottom: calc(12px + env(safe-area-inset-bottom));
-}
+@supports (-webkit-touch-callout: none) {
 
-/* limita altura do card e ativa scroll interno */
-.modal__card{
-  max-height: calc(100dvh - (24px + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
-  overflow: auto;
-  -webkit-overflow-scrolling: touch; /* scroll suave no iOS */
-}
+  /* overlay */
+  .modal{
+    align-items: flex-end;          /* vira bottom-sheet */
+    justify-content: center;
+    padding: 12px;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
 
-/* ===============================
-   iPhone/Safari - modal "sheet"
-   =============================== */
+  /* card não pode “vazar” pra cima */
+  .modal__card{
+    display: flex;
+    flex-direction: column;
 
-.modal{
-  padding: 12px;
-  padding-top: calc(12px + env(safe-area-inset-top));
-  padding-bottom: calc(12px + env(safe-area-inset-bottom));
-}
+    width: 100%;
+    max-width: 560px;
 
-/* o card vira coluna e NÃO estoura a tela */
-.modal__card{
-  display: flex;
-  flex-direction: column;
+    /* usa --vh (setado via JS) pra altura REAL do Safari */
+    max-height: calc(var(--vh, 1vh) * 92);
 
-  /* fallback + iOS moderno */
-  max-height: calc(100vh - (24px + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
-  max-height: calc(100svh - (24px + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
-  max-height: calc(100dvh - (24px + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+    overflow: hidden;              /* quem rola é o form */
+  }
 
-  overflow: hidden; /* quem rola é o form */
-}
+  /* cabeçalho sempre acessível */
+  .modal__head{
+    flex: 0 0 auto;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+    padding: 10px 6px;
+  }
 
-/* cabeçalho sempre visível */
-.modal__head{
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: var(--bg);
-  padding-top: 10px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--line);
-}
-
-/* >>> o formulário rola por dentro do modal <<< */
-.modal__card > .form,
-.modal__card > form.form{
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom));
-}
-
-/* evita zoom do Safari ao focar */
-.input, .btn, .smallbtn, .modal__close{
-  font-size: 16px;
+  /* o form vira “área rolável” */
+  #taskForm{
+    flex: 1 1 auto;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
 }
