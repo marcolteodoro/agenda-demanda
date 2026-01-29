@@ -237,35 +237,62 @@ body{
   color: var(--blue);
 }
 
+/* ===========================
+   MODAL (desktop + iPhone)
+   =========================== */
+
 .modal{
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,.35);
   display:flex;
-  align-items:center;
+  align-items:flex-end;              /* vira sheet (melhor no iPhone) */
   justify-content:center;
   padding: 12px;
+  padding-top: calc(12px + env(safe-area-inset-top));
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
   z-index: 999;
 }
+
 .modal[hidden]{
   display: none !important;
 }
 
+/* card */
 .modal__card{
   width: 100%;
   max-width: 560px;
   background: var(--bg);
   border-radius: 22px;
   box-shadow: var(--shadow);
-  padding: 12px;
+
+  position: relative;               /* base pro header absoluto */
+  overflow: hidden;                 /* QUEM ROLA É O FORM */
+
+  /* altura segura (desktop) */
+  max-height: calc(100dvh - (24px + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
 }
+
+/* header fixo dentro do card (X nunca some) */
 .modal__head{
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+
+  height: 60px;
   display:flex;
   align-items:center;
   justify-content:space-between;
-  padding: 6px 6px 10px 6px;
+
+  padding: 10px 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  z-index: 20;
 }
+
 .modal__title{ font-weight:900; }
+
 .modal__close{
   -webkit-appearance: none;
   appearance: none;
@@ -288,6 +315,36 @@ body{
   line-height: 1;
   color: var(--text);
 }
+
+/* o form rola por dentro e respeita o header */
+#taskForm{
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+
+  padding: 12px;
+  padding-top: 72px; /* 60px do header + respiro */
+
+  max-height: inherit; /* herda do card */
+}
+
+/* iPhone: usa --vh real (setado via JS) p/ não estourar com date picker */
+@supports (-webkit-touch-callout: none){
+  .modal__card{
+    max-height: calc((var(--vh, 1vh) * 100) - (24px + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+  }
+}
+
+/* evita zoom do Safari ao focar */
+.input, .btn, .smallbtn, .modal__close{
+  font-size: 16px;
+}
+
+/* garante o date bonitinho e sem “overflow” estranho */
+input[type="date"].input{
+  width: 100%;
+  max-width: 100%;
+}
+
 
 .label{
   display:block;
