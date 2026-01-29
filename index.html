@@ -103,6 +103,29 @@
     </div>
   </div>
 
+  <!-- Modal: Login -->
+<div class="modal" id="authModal" hidden>
+  <div class="modal__card">
+    <div class="modal__head">
+      <div class="modal__title">Entrar</div>
+    </div>
+
+    <div class="form">
+      <label class="label">Email</label>
+      <input id="aEmail" class="input" type="email" placeholder="seuemail@..." />
+
+      <label class="label">Senha</label>
+      <input id="aPass" class="input" type="password" placeholder="••••••••" />
+
+      <div class="form__actions">
+        <button class="btn btn--primary" id="btnLogin">Entrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
 </body>
 </html>
